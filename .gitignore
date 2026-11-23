@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+node_modules/
+frontend/dist/
+
+# Environment and local database
+.env
+*.db
+backend/data/
+backend/storage/
+backend/uploads/
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

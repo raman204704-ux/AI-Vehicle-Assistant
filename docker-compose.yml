@@ -1,0 +1,145 @@
+x-core-environment: &core-environment
+  APP_NAME: Vehicle Maintenance Assistant
+  APP_ENV: ${APP_ENV:-development}
+  DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/vehicle_maintenance
+  SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in the project-root .env file}
+  REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+  REMINDER_MILEAGE_THRESHOLD_KM: ${REMINDER_MILEAGE_THRESHOLD_KM:-500}
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: vehicle_maintenance
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the project-root .env file}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d vehicle_maintenance"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      args:
+        APP_UID: ${APP_UID:-1000}
+        APP_GID: ${APP_GID:-1000}
+    ports:
+      - "8000:8000"
+    environment:
+      <<: *core-environment
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173,http://localhost:8080,http://127.0.0.1:8080}
+      CHROMA_PERSIST_DIRECTORY: ${CHROMA_PERSIST_DIRECTORY:-storage/chroma}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-sentence-transformers/all-MiniLM-L6-v2}
+      RERANKER_MODEL: ${RERANKER_MODEL:-cross-encoder/ms-marco-MiniLM-L-6-v2}
+      OCR_LANG: ${OCR_LANG:-en}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend/uploads:/app/uploads
+      - chroma-data:/app/storage/chroma
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "gosu",
+          "app",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=2)",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
+
+  worker:
+    build:
+      context: ./backend
+      args:
+        APP_UID: ${APP_UID:-1000}
+        APP_GID: ${APP_GID:-1000}
+    command:
+      [
+        "celery",
+        "-A",
+        "app.core.celery_app.celery_app",
+        "worker",
+        "--loglevel=info",
+      ]
+    environment:
+      <<: *core-environment
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
+      OCR_LANG: ${OCR_LANG:-en}
+    depends_on:
+      backend:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend/uploads:/app/uploads
+
+  beat:
+    build:
+      context: ./backend
+      args:
+        APP_UID: ${APP_UID:-1000}
+        APP_GID: ${APP_GID:-1000}
+    command:
+      [
+        "celery",
+        "-A",
+        "app.core.celery_app.celery_app",
+        "beat",
+        "--loglevel=info",
+        "--schedule=/app/storage/celery/celerybeat-schedule",
+      ]
+    environment:
+      <<: *core-environment
+    depends_on:
+      backend:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - celery-beat-data:/app/storage/celery
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  chroma-data:
+  redis-data:
+  celery-beat-data:
