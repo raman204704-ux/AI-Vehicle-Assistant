@@ -5,16 +5,37 @@ PostgreSQL vehicle-management API.
 
 ## Configure PostgreSQL
 
-Create a PostgreSQL database named `vehicle_maintenance`, then copy
-`backend/.env.example` to `backend/.env` and update the username, password, host,
-and port for your local PostgreSQL installation. Replace `YOUR_PASSWORD` in the
-URL and set `SECRET_KEY` to a generated random value. Keep `.env` private
-because it contains local credentials and the JWT signing key.
+Copy `backend/.env.example` to `backend/.env` and set `SECRET_KEY` to a
+generated random value. Keep `.env` private because it contains credentials and
+the JWT signing key.
 
 Generate a signing key locally with:
 
 ```powershell
 python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+### Option A — Supabase (recommended for cloud-hosted database)
+
+Create a project on [Supabase](https://supabase.com), copy the connection string
+from **Settings → Database → Connection string → URI**, and set `DATABASE_URL`
+in `backend/.env`:
+
+```
+DATABASE_URL=postgresql+psycopg2://postgres.YOUR_PROJECT_REF:YOUR_PASSWORD@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres
+```
+
+Replace the region, project ref, and password with your Supabase project values.
+Supabase manages backups, connection pooling, and high availability.
+
+### Option B — Local PostgreSQL
+
+Create a PostgreSQL database named `vehicle_maintenance`, then update
+`DATABASE_URL` in `backend/.env` with the username, password, host, and port for
+your local installation:
+
+```
+DATABASE_URL=postgresql+psycopg2://postgres:YOUR_PASSWORD@localhost:5432/vehicle_maintenance
 ```
 
 For example, create the database from `psql` or pgAdmin:
